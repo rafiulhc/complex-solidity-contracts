@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 
-contract RockBitcoin is Ownable {
+contract DistributionBitcoin is Ownable {
     // Contract handles
     IERC20 public BEDROCK;
     IERC20 public WBTC;
