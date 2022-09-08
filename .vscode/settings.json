@@ -1,4 +1,4 @@
 {
     "solidity.defaultCompiler": "localFile",
-    "solidity.compileUsingLocalVersion": "c:\\projects\\complex-solidity-contracts\\soljson-v0.8.7+commit.e28d00a7.js"
+    "solidity.compileUsingLocalVersion": "c:\\projects\\complex-solidity-contracts\\soljson-v0.8.16+commit.07a7930e.js"
 }
