@@ -1,20 +1,178 @@
 // SPDX-License-Identifier: None
-pragma solidity ^0.8.7;
+pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+// import "@openzeppelin/contracts/access/Ownable.sol";
+ // import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+interface IERC20 {
+    /**
+     * @dev Returns the amount of tokens in existence.
+     */
+    function totalSupply() external view returns (uint256);
+
+    /**
+     * @dev Returns the amount of tokens owned by `account`.
+     */
+    function balanceOf(address account) external view returns (uint256);
+
+    /**
+     * @dev Moves `amount` tokens from the caller's account to `recipient`.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * Emits a {Transfer} event.
+     */
+    function transfer(address recipient, uint256 amount)
+        external
+        returns (bool);
+
+    /**
+     * @dev Returns the remaining number of tokens that `spender` will be
+     * allowed to spend on behalf of `owner` through {transferFrom}. This is
+     * zero by default.
+     *
+     * This value changes when {approve} or {transferFrom} are called.
+     */
+    function allowance(address owner, address spender)
+        external
+        view
+        returns (uint256);
+
+    /**
+     * @dev Sets `amount` as the allowance of `spender` over the caller's tokens.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * IMPORTANT: Beware that changing an allowance with this method brings the risk
+     * that someone may use both the old and the new allowance by unfortunate
+     * transaction ordering. One possible solution to mitigate this race
+     * condition is to first reduce the spender's allowance to 0 and set the
+     * desired value afterwards:
+     * https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
+     *
+     * Emits an {Approval} event.
+     */
+    function approve(address spender, uint256 amount) external returns (bool);
+
+    /**
+     * @dev Moves `amount` tokens from `sender` to `recipient` using the
+     * allowance mechanism. `amount` is then deducted from the caller's
+     * allowance.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * Emits a {Transfer} event.
+     */
+    function transferFrom(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) external returns (bool);
+
+    /**
+     * @dev Emitted when `value` tokens are moved from one account (`from`) to
+     * another (`to`).
+     *
+     * Note that `value` may be zero.
+     */
+    event Transfer(address indexed from, address indexed to, uint256 value);
+
+    /**
+     * @dev Emitted when the allowance of a `spender` for an `owner` is set by
+     * a call to {approve}. `value` is the new allowance.
+     */
+    event Approval(
+        address indexed owner,
+        address indexed spender,
+        uint256 value
+    );
+}
+
+abstract contract Context {
+    function _msgSender() internal view virtual returns (address) {
+        return msg.sender;
+    }
+
+    function _msgData() internal view virtual returns (bytes calldata) {
+        return msg.data;
+    }
+}
+
+abstract contract Ownable is Context {
+    address private _owner;
+
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+    /**
+     * @dev Initializes the contract setting the deployer as the initial owner.
+     */
+    constructor() {
+        _transferOwnership(_msgSender());
+    }
+
+    /**
+     * @dev Returns the address of the current owner.
+     */
+    function owner() public view virtual returns (address) {
+        return _owner;
+    }
+
+    /**
+     * @dev Throws if called by any account other than the owner.
+     */
+    modifier onlyOwner() {
+        require(owner() == _msgSender(), "Ownable: caller is not the owner");
+        _;
+    }
+
+    /**
+     * @dev Leaves the contract without owner. It will not be possible to call
+     * `onlyOwner` functions anymore. Can only be called by the current owner.
+     *
+     * NOTE: Renouncing ownership will leave the contract without an owner,
+     * thereby removing any functionality that is only available to the owner.
+     */
+    function renounceOwnership() public virtual onlyOwner {
+        _transferOwnership(address(0));
+    }
+
+    /**
+     * @dev Transfers ownership of the contract to a new account (`newOwner`).
+     * Can only be called by the current owner.
+     */
+    function transferOwnership(address newOwner) public virtual onlyOwner {
+        require(newOwner != address(0), "Ownable: new owner is the zero address");
+        _transferOwnership(newOwner);
+    }
+
+    /**
+     * @dev Transfers ownership of the contract to a new account (`newOwner`).
+     * Internal function without access restriction.
+     */
+    function _transferOwnership(address newOwner) internal virtual {
+        address oldOwner = _owner;
+        _owner = newOwner;
+        emit OwnershipTransferred(oldOwner, newOwner);
+    }
+}
 
 
-contract DistributionBitcoin is Ownable {
+contract RockBitcoin is Ownable {
     // Contract handles
     IERC20 public BEDROCK;
     IERC20 public WBTC;
+
+    // BTC Drip variables
+    uint8 public WBTCRewardsPercentageFactor = 100; // owner will decide how much WBTC held by this contract and change this variable thereafter
+    uint256 public bitcoinDripInterval = 86400;  // actual drip interval determined by the owner e.g 60 seconds * 60 minutes * 24 hours
+    uint256 public bitcoinDripLastReleaseTime = block.timestamp;
+    uint256 public unclaimedBTCDripTotal;
 
     // Stake parameters
     address[] public stakerWallets;
     mapping(address => uint256) stakerWalletIndices;
     mapping(address => uint256) public rockStakes;
     mapping(address => uint256) public unclaimedRock;
+    mapping(address => uint256) public unclaimedBTC;
 
     // Fee mechanics
     uint8 depositFeePercent = 10;
@@ -38,7 +196,15 @@ contract DistributionBitcoin is Ownable {
     event RockStaked(address wallet, uint256 amountDeposited, uint256 effectiveRockStaked);
     event RockUnstaked(address wallet, uint256 amountUnstaked, uint256 effectiveRockUnstaked);
 
-    constructor(address _bedrock, address _wbtc) {
+    fallback() external payable {
+        // Do nothing
+    }
+
+    receive() external payable {
+        // Do nothing
+    }
+
+    constructor(address _bedrock, address _wbtc){
         BEDROCK = IERC20(_bedrock);
         WBTC = IERC20(_wbtc);
 
@@ -63,12 +229,23 @@ contract DistributionBitcoin is Ownable {
         moderatorWallet = _moderatorWallet;
     }
 
+    // setter function for BTCRewardsPercentageFactor
+
+    function setBTCRewardsPercentageFactor(uint8 _WBTCRewardsPercentageFactor) external onlyOwner {
+        WBTCRewardsPercentageFactor = _WBTCRewardsPercentageFactor;
+    }
+
     function pullRock(uint256 amount) external onlyOwner {
         BEDROCK.transfer(_msgSender(), amount);
     }
 
     function pullBitcoin(uint256 amount) external onlyOwner {
         WBTC.transfer(_msgSender(), amount);
+    }
+
+    // set Bitcoindrip interval
+    function setBitcoinDripInterval(uint256 _bitcoinDripInterval) external onlyOwner {
+        bitcoinDripInterval = _bitcoinDripInterval;
     }
 
     // Staking functions
@@ -108,6 +285,7 @@ contract DistributionBitcoin is Ownable {
 
         uint256 remainingAmount = _deductFee(amount, false);
         rockStakes[_msgSender()] -= amount;
+        BEDROCK.approve(_msgSender(), amount);
         BEDROCK.transfer(_msgSender(), remainingAmount);
 
         emit RockUnstaked(_msgSender(), amount, remainingAmount);
@@ -138,7 +316,7 @@ contract DistributionBitcoin is Ownable {
     }
 
     function _distributeRock(uint256 amount) internal returns(uint256 slack) {
-        slack = amount;
+         slack = amount;
         for (uint256 i = 0; i < stakerWallets.length; i++) {
             address wallet = stakerWallets[i];
             if (rockStakes[wallet] == 0 || wallet == burnWallet || wallet == address(0) || wallet == _msgSender()) {
@@ -152,4 +330,43 @@ contract DistributionBitcoin is Ownable {
             slack -= amountToReward;
         }
     }
+
+    // Distribution of Bitcoin Drip
+    function distributeBitcoin() external onlyModerator {
+        require(block.timestamp > bitcoinDripLastReleaseTime + bitcoinDripInterval, "Bitcoin drip is not ready to be distributed yet.");
+        // Calculate the percentage of each staker's stake
+        for (uint256 i = 0; i < stakerWallets.length; i++) {
+            address wallet = stakerWallets[i];
+            if (rockStakes[wallet] == 0 || wallet == burnWallet || wallet == address(0) || wallet == _msgSender()) {
+                continue;
+            }
+
+
+            uint256 eligibleWBTCBalance = WBTC.balanceOf(address(this)) - unclaimedBTCDripTotal;
+            uint256 dailyDripAmount = eligibleWBTCBalance / WBTCRewardsPercentageFactor;
+
+            uint256 contractRockBalance = BEDROCK.balanceOf(address(this));
+            uint256 percentageShare = (100 * rockStakes[wallet]) / contractRockBalance;
+            uint256 dripReward = (dailyDripAmount * percentageShare) / 100;
+            unclaimedBTC[wallet] += dripReward;
+            unclaimedBTCDripTotal += dripReward;
+        }
+    }
+
+    function claimBTCDrip() external {
+        uint256 unclaimedAmount = unclaimedBTC[_msgSender()];
+        require(unclaimedAmount > 0, "You do not have any unclaimed BTCB left.");
+        unclaimedBTC[_msgSender()] = 0;
+        WBTC.transfer(_msgSender(), unclaimedAmount);
+        unclaimedBTCDripTotal -= unclaimedAmount;
+    }
+
+    function WBTCBalance() public view returns(uint256){
+        return WBTC.balanceOf(address(this));
+    }
+
+    function ROCKBalance() public view returns(uint256){
+        return BEDROCK.balanceOf(address(this));
+    }
+
 }
