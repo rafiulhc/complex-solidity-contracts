@@ -163,7 +163,7 @@ contract RockBitcoin is Ownable {
 
     // BTC Drip variables
     uint8 public WBTCRewardsPercentageFactor = 100; // owner will decide how much WBTC held by this contract and change this variable thereafter
-    uint256 public bitcoinDripInterval = 86400;  // actual drip interval determined by the owner e.g 60 seconds * 60 minutes * 24 hours
+    uint256 public bitcoinDripInterval = 60;  // actual drip interval determined by the owner e.g 60 seconds * 60 minutes * 24 hours
     uint256 public bitcoinDripLastReleaseTime = block.timestamp;
     uint256 public unclaimedBTCDripTotal;
 
@@ -188,13 +188,14 @@ contract RockBitcoin is Ownable {
 
     // Modifiers
     modifier onlyModerator {
-        require(_msgSender() == moderatorWallet, "Access forbidden!");
+        require(_msgSender() == moderatorWallet, "Access forbidden!, you're not moderator");
         _;
     }
 
     // Events
     event RockStaked(address wallet, uint256 amountDeposited, uint256 effectiveRockStaked);
     event RockUnstaked(address wallet, uint256 amountUnstaked, uint256 effectiveRockUnstaked);
+    event RockRolled(address wallet, uint256 amountRolled, uint256 effectiveRockStaked);
 
     fallback() external payable {
         // Do nothing
@@ -212,6 +213,18 @@ contract RockBitcoin is Ownable {
         burnWallet = 0x000000000000000000000000000000000000dEaD;
         treasuryWallet = _msgSender();
         moderatorWallet = _msgSender();
+    }
+
+    // Total Bedrock balance by the user
+    function myTokens() public view returns (uint256) {
+        address stakerAddress = msg.sender;
+        return BEDROCK.balanceOf(stakerAddress);
+    }
+
+    // unclaimed rock dividends of staker
+    function myDividends() public view returns (uint256) {
+        address stakerAddress = msg.sender;
+        return unclaimedRock[stakerAddress];
     }
 
     // Moderation functions
@@ -249,12 +262,12 @@ contract RockBitcoin is Ownable {
     }
 
     // Staking functions
-    function stakeRock(uint256 amount) external {
+    function stakeRock(uint256 amount) public {
         if (stakerWalletIndices[_msgSender()] == 0) {
             stakerWalletIndices[_msgSender()] = stakerWallets.length;
             stakerWallets.push(_msgSender());
         }
-
+        require(BEDROCK.balanceOf(msg.sender) >= amount, "You don't have sufficient Rock to stake!");
         uint256 remainingAmount = _deductFee(amount, true);
         rockStakes[_msgSender()] += remainingAmount;
         BEDROCK.transferFrom(_msgSender(), address(this), amount);
@@ -266,11 +279,22 @@ contract RockBitcoin is Ownable {
         WBTC.transfer(recipient, amount);
     }
 
-    function claimRock() external {
+    function claimRock() public {
         uint256 unclaimedAmount = unclaimedRock[_msgSender()];
         require(unclaimedAmount > 0, "You do not have any unclaimed rock left.");
         unclaimedRock[_msgSender()] = 0;
         BEDROCK.transfer(_msgSender(), unclaimedAmount);
+    }
+
+    // Roll the unclaimed rock
+    function reInvestRock() external {
+        uint256 unclaimedAmount = unclaimedRock[_msgSender()];
+        require(unclaimedAmount > 0, "You do not have any unclaimed rock left.");
+        uint256 remainingAmount = _deductFee(unclaimedAmount, true);
+        unclaimedRock[_msgSender()] = 0;
+        rockStakes[_msgSender()] += remainingAmount;
+
+        emit RockRolled(_msgSender(), remainingAmount, remainingAmount);
     }
 
     function withdrawRock(uint256 amount) external {
