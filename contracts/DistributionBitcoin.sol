@@ -1,7 +1,8 @@
+// SPDX-License-Identifier: None
 pragma solidity ^0.8.0;
 
 // import "@openzeppelin/contracts/access/Ownable.sol";
- // import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+// import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 interface IERC20 {
     /**
      * @dev Returns the amount of tokens in existence.
@@ -154,8 +155,50 @@ abstract contract Ownable is Context {
     }
 }
 
+abstract contract ReentrancyGuard {
+    // Booleans are more expensive than uint256 or any type that takes up a full
+    // word because each write operation emits an extra SLOAD to first read the
+    // slot's contents, replace the bits taken up by the boolean, and then write
+    // back. This is the compiler's defense against contract upgrades and
+    // pointer aliasing, and it cannot be disabled.
 
-contract RockBitcoin is Ownable {
+    // The values being non-zero value makes deployment a bit more expensive,
+    // but in exchange the refund on every call to nonReentrant will be lower in
+    // amount. Since refunds are capped to a percentage of the total
+    // transaction's gas, it is best to keep them low in cases like this one, to
+    // increase the likelihood of the full refund coming into effect.
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+
+    uint256 private _status;
+
+    constructor() {
+        _status = _NOT_ENTERED;
+    }
+
+    /**
+     * @dev Prevents a contract from calling itself, directly or indirectly.
+     * Calling a `nonReentrant` function from another `nonReentrant`
+     * function is not supported. It is possible to prevent this from happening
+     * by making the `nonReentrant` function external, and making it call a
+     * `private` function that does the actual work.
+     */
+    modifier nonReentrant() {
+        // On the first call to nonReentrant, _notEntered will be true
+        require(_status != _ENTERED, "ReentrancyGuard: reentrant call");
+
+        // Any calls to nonReentrant after this point will fail
+        _status = _ENTERED;
+
+        _;
+
+        // By storing the original value once again, a refund is triggered (see
+        // https://eips.ethereum.org/EIPS/eip-2200)
+        _status = _NOT_ENTERED;
+    }
+}
+
+contract RockBitcoin is Ownable, ReentrancyGuard {
     // Contract handles
     IERC20 public BEDROCK;
     IERC20 public WBTC;
@@ -172,6 +215,7 @@ contract RockBitcoin is Ownable {
     mapping(address => uint256) public rockStakes;
     mapping(address => uint256) public unclaimedRock;
     mapping(address => uint256) public unclaimedBTC;
+    mapping(address => uint256) public rollCount;
 
     // Fee mechanics
     uint8 depositFeePercent = 10;
@@ -215,15 +259,28 @@ contract RockBitcoin is Ownable {
     }
 
     // Total Bedrock balance by the user
-    function myTokens() public view returns (uint256) {
-        address stakerAddress = msg.sender;
-        return BEDROCK.balanceOf(stakerAddress);
+    function getUserRockTokens() public view returns (uint256) {
+        return BEDROCK.balanceOf(msg.sender);
+    }
+
+    // staked Bedrock by the user
+    function getUserStakedRockTokens() public view returns (uint256) {
+        return rockStakes[msg.sender];
     }
 
     // unclaimed rock dividends of staker
-    function myDividends() public view returns (uint256) {
-        address stakerAddress = msg.sender;
-        return unclaimedRock[stakerAddress];
+    function getUserUnclaimedRockDividends() public view returns (uint256) {
+        return unclaimedRock[msg.sender];
+    }
+
+    // unclaimed BTC dividends of staker
+    function getUserUnclaimedBTCDividends() public view returns (uint256) {
+        return unclaimedBTC[msg.sender];
+    }
+
+    // count how many times user Rolled rock dividends
+    function getUserRollCount() public view returns (uint256) {
+        return rollCount[msg.sender];
     }
 
     // Moderation functions
@@ -242,20 +299,21 @@ contract RockBitcoin is Ownable {
     }
 
     // setter function for BTCRewardsPercentageFactor
-
     function setBTCRewardsPercentageFactor(uint8 _WBTCRewardsPercentageFactor) external onlyOwner {
         WBTCRewardsPercentageFactor = _WBTCRewardsPercentageFactor;
     }
 
+    // incase of emergency to withdraw all the Rock from this contract
     function pullRock(uint256 amount) external onlyOwner {
         BEDROCK.transfer(_msgSender(), amount);
     }
 
+    // incase of emergency to withdraw all the BTC from this contract
     function pullBitcoin(uint256 amount) external onlyOwner {
         WBTC.transfer(_msgSender(), amount);
     }
 
-    // set Bitcoindrip interval
+    // set Bitcoindrip interval in seconds
     function setBitcoinDripInterval(uint256 _bitcoinDripInterval) external onlyOwner {
         bitcoinDripInterval = _bitcoinDripInterval;
     }
@@ -266,7 +324,6 @@ contract RockBitcoin is Ownable {
             stakerWalletIndices[_msgSender()] = stakerWallets.length;
             stakerWallets.push(_msgSender());
         }
-        require(BEDROCK.balanceOf(msg.sender) >= amount, "You don't have sufficient Rock to stake!");
         uint256 remainingAmount = _deductFee(amount, true);
         rockStakes[_msgSender()] += remainingAmount;
         BEDROCK.transferFrom(_msgSender(), address(this), amount);
@@ -278,7 +335,8 @@ contract RockBitcoin is Ownable {
         WBTC.transfer(recipient, amount);
     }
 
-    function claimRock() public {
+    // claim unclaimed rock dividends
+    function claimRock() external nonReentrant {
         uint256 unclaimedAmount = unclaimedRock[_msgSender()];
         require(unclaimedAmount > 0, "You do not have any unclaimed rock left.");
         unclaimedRock[_msgSender()] = 0;
@@ -286,17 +344,18 @@ contract RockBitcoin is Ownable {
     }
 
     // Roll the unclaimed rock
-    function reInvestRock() external {
+    function reInvestRock() external nonReentrant {
         uint256 unclaimedAmount = unclaimedRock[_msgSender()];
         require(unclaimedAmount > 0, "You do not have any unclaimed rock left.");
         uint256 remainingAmount = _deductFee(unclaimedAmount, true);
         unclaimedRock[_msgSender()] = 0;
         rockStakes[_msgSender()] += remainingAmount;
+        rollCount[msg.sender]++;
 
         emit RockRolled(_msgSender(), remainingAmount, remainingAmount);
     }
 
-    function withdrawRock(uint256 amount) external {
+    function withdrawRock(uint256 amount) external nonReentrant {
         require(amount <= rockStakes[_msgSender()], "You don't have enough staked");
 
         if (amount == rockStakes[_msgSender()]) {
@@ -338,7 +397,7 @@ contract RockBitcoin is Ownable {
         remainingAmount = amount - burnAmount - paybackAmount - treasuryAmount + slack;
     }
 
-    function _distributeRock(uint256 amount) internal returns(uint256 slack) {
+    function _distributeRock(uint256 amount) internal returns (uint256 slack) {
          slack = amount;
         for (uint256 i = 0; i < stakerWallets.length; i++) {
             address wallet = stakerWallets[i];
@@ -355,7 +414,7 @@ contract RockBitcoin is Ownable {
     }
 
     // Distribution of Bitcoin Drip
-    function distributeBitcoin() external onlyModerator {
+    function distributeBitcoin() external {
         require(block.timestamp > bitcoinDripLastReleaseTime + bitcoinDripInterval, "Bitcoin drip is not ready to be distributed yet.");
         // Calculate the percentage of each staker's stake
         for (uint256 i = 0; i < stakerWallets.length; i++) {
@@ -376,11 +435,11 @@ contract RockBitcoin is Ownable {
         }
     }
 
-    function claimBTCDrip() external {
-        uint256 unclaimedAmount = unclaimedBTC[_msgSender()];
+    function claimBTCDrip() external nonReentrant {
+        uint256 unclaimedAmount = unclaimedBTC[msg.sender];
         require(unclaimedAmount > 0, "You do not have any unclaimed BTCB left.");
-        unclaimedBTC[_msgSender()] = 0;
-        WBTC.transfer(_msgSender(), unclaimedAmount);
+        unclaimedBTC[msg.sender] = 0;
+        WBTC.transfer(msg.sender, unclaimedAmount);
         unclaimedBTCDripTotal -= unclaimedAmount;
     }
 
