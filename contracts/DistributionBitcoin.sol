@@ -291,7 +291,7 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
         paybackPercent = _paybackPercent;
         treasuryPercent = _treasuryPercent;
     }
-
+    // setter function for wallets
     function setExternalWallets(address _burnWallet, address _treasuryWallet, address _moderatorWallet) external onlyOwner {
         burnWallet = _burnWallet;
         treasuryWallet = _treasuryWallet;
