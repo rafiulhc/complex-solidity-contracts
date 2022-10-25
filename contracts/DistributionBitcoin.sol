@@ -419,7 +419,7 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
         // Calculate the percentage of each staker's stake
         for (uint256 i = 0; i < stakerWallets.length; i++) {
             address wallet = stakerWallets[i];
-            if (rockStakes[wallet] == 0 || wallet == burnWallet || wallet == address(0) || wallet == _msgSender()) {
+            if (rockStakes[wallet] == 0 || wallet == burnWallet || wallet == address(0)) {
                 continue;
             }
 
