@@ -291,7 +291,7 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
         paybackPercent = _paybackPercent;
         treasuryPercent = _treasuryPercent;
     }
-    // setter function for wallets
+
     function setExternalWallets(address _burnWallet, address _treasuryWallet, address _moderatorWallet) external onlyOwner {
         burnWallet = _burnWallet;
         treasuryWallet = _treasuryWallet;
@@ -343,6 +343,11 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
         BEDROCK.transfer(_msgSender(), unclaimedAmount);
     }
 
+    // approve Bitcoindrip contract by Bedrock contract to spend by user
+    function approveBTCB(uint256 _amount) external {
+        BEDROCK.approve(address(this), _amount);
+    }
+
     // Roll the unclaimed rock
     function reInvestRock() external nonReentrant {
         uint256 unclaimedAmount = unclaimedRock[_msgSender()];
@@ -350,7 +355,7 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
         uint256 remainingAmount = _deductFee(unclaimedAmount, true);
         unclaimedRock[_msgSender()] = 0;
         rockStakes[_msgSender()] += remainingAmount;
-        rollCount[msg.sender]++;
+        rollCount[_msgSender()]++;
 
         emit RockRolled(_msgSender(), remainingAmount, remainingAmount);
     }
@@ -436,10 +441,10 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
     }
 
     function claimBTCDrip() external nonReentrant {
-        uint256 unclaimedAmount = unclaimedBTC[msg.sender];
+        uint256 unclaimedAmount = unclaimedBTC[_msgSender()];
         require(unclaimedAmount > 0, "You do not have any unclaimed BTCB left.");
-        unclaimedBTC[msg.sender] = 0;
-        WBTC.transfer(msg.sender, unclaimedAmount);
+        unclaimedBTC[_msgSender()] = 0;
+        WBTC.transfer(_msgSender(), unclaimedAmount);
         unclaimedBTCDripTotal -= unclaimedAmount;
     }
 
