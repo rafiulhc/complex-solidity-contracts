@@ -204,7 +204,7 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
     IERC20 public WBTC;
 
     // BTC Drip variables
-    uint8 public WBTCRewardsPercentageFactor = 100; // owner will decide how much WBTC held by this contract and change this variable thereafter
+    uint8 public WBTCRewardsPercentageFactor = 1; // owner will decide how much WBTC held by this contract and change this variable thereafter
     uint256 public bitcoinDripInterval = 60;  // actual drip interval determined by the owner e.g 60 seconds * 60 minutes * 24 hours
     uint256 public bitcoinDripLastReleaseTime = block.timestamp;
     uint256 public unclaimedBTCDripTotal;
@@ -372,7 +372,6 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
 
         uint256 remainingAmount = _deductFee(amount, false);
         rockStakes[_msgSender()] -= amount;
-        BEDROCK.approve(_msgSender(), amount);
         BEDROCK.transfer(_msgSender(), remainingAmount);
 
         emit RockUnstaked(_msgSender(), amount, remainingAmount);
@@ -397,13 +396,13 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
         BEDROCK.transfer(burnWallet, burnAmount);
         BEDROCK.transfer(treasuryWallet, treasuryAmount);
 
-        uint256 slack = _distributeRock(paybackAmount);
+        _distributeRock(paybackAmount);
 
-        remainingAmount = amount - burnAmount - paybackAmount - treasuryAmount + slack;
+        remainingAmount = amount - burnAmount - paybackAmount - treasuryAmount;
     }
 
-    function _distributeRock(uint256 amount) internal returns (uint256 slack) {
-         slack = amount;
+    function _distributeRock(uint256 amount) internal returns (bool) {
+
         for (uint256 i = 0; i < stakerWallets.length; i++) {
             address wallet = stakerWallets[i];
             if (rockStakes[wallet] == 0 || wallet == burnWallet || wallet == address(0) || wallet == _msgSender()) {
@@ -414,8 +413,8 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
             uint256 percentageShare = (100 * rockStakes[wallet]) / contractRockBalance;
             uint256 amountToReward = (amount * percentageShare) / 100;
             unclaimedRock[wallet] += amountToReward;
-            slack -= amountToReward;
         }
+        return true;
     }
 
     // Distribution of Bitcoin Drip
