@@ -204,10 +204,11 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
     IERC20 public WBTC;
 
     // BTC Drip variables
-    uint8 public WBTCRewardsPercentageFactor = 1; // owner will decide how much WBTC held by this contract and change this variable thereafter
-    uint256 public bitcoinDripInterval = 60;  // actual drip interval determined by the owner e.g 60 seconds * 60 minutes * 24 hours
-    uint256 public bitcoinDripLastReleaseTime = block.timestamp;
+    uint8 public WBTCRewardsPercentageFactor = 100; // owner will decide how much WBTC held by this contract and change this variable thereafter
     uint256 public unclaimedBTCDripTotal;
+    uint public bitcoinDripInterval = 60 seconds;  // actual drip interval determined by the owner e.g 60 seconds * 60 minutes * 24 hours
+    uint public bitcoinDripLastReleaseTime = block.timestamp;
+
 
     // Stake parameters
     address[] public stakerWallets;
@@ -239,6 +240,7 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
     event RockStaked(address wallet, uint256 amountDeposited, uint256 effectiveRockStaked);
     event RockUnstaked(address wallet, uint256 amountUnstaked, uint256 effectiveRockUnstaked);
     event RockRolled(address wallet, uint256 amountRolled, uint256 effectiveRockStaked);
+    event BitcoinDistributed(bool distributed, uint time);
 
     fallback() external payable {
         // Do nothing
@@ -437,6 +439,7 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
             unclaimedBTC[wallet] += dripReward;
             unclaimedBTCDripTotal += dripReward;
         }
+        emit BitcoinDistributed(true, block.timestamp);
     }
 
     function claimBTCDrip() external nonReentrant {
