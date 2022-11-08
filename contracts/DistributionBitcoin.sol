@@ -204,10 +204,10 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
     IERC20 public WBTC;
 
     // BTC Drip variables
-    uint8 public WBTCRewardsPercentageFactor = 100; // owner will decide how much WBTC held by this contract and change this variable thereafter
+    uint8 public WBTCRewardsPercentageFactor = 1; // owner will decide how much WBTC held by this contract and change this variable thereafter
     uint256 public unclaimedBTCDripTotal;
-    uint public bitcoinDripInterval = 60 seconds;  // actual drip interval determined by the owner e.g 60 seconds * 60 minutes * 24 hours
-    uint public bitcoinDripLastReleaseTime = block.timestamp;
+    uint public bitcoinDripInterval = 86400 seconds;  // actual drip interval determined by the owner e.g 60 seconds * 60 minutes * 24 hours
+    uint public bitcoinDripNextReleaseTime = block.timestamp;
 
 
     // Stake parameters
@@ -345,11 +345,6 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
         BEDROCK.transfer(_msgSender(), unclaimedAmount);
     }
 
-    // approve Bitcoindrip contract by Bedrock contract to spend by user
-    function approveBTCB(uint256 _amount) external {
-        BEDROCK.approve(address(this), _amount);
-    }
-
     // Roll the unclaimed rock
     function reInvestRock() external nonReentrant {
         uint256 unclaimedAmount = unclaimedRock[_msgSender()];
@@ -403,7 +398,7 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
         remainingAmount = amount - burnAmount - paybackAmount - treasuryAmount;
     }
 
-    function _distributeRock(uint256 amount) internal returns (bool) {
+    function _distributeRock(uint256 amount) internal {
 
         for (uint256 i = 0; i < stakerWallets.length; i++) {
             address wallet = stakerWallets[i];
@@ -416,19 +411,18 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
             uint256 amountToReward = (amount * percentageShare) / 100;
             unclaimedRock[wallet] += amountToReward;
         }
-        return true;
     }
 
     // Distribution of Bitcoin Drip
     function distributeBitcoin() external {
-        require(block.timestamp > bitcoinDripLastReleaseTime + bitcoinDripInterval, "Bitcoin drip is not ready to be distributed yet.");
+        require(block.timestamp > bitcoinDripNextReleaseTime, "Bitcoin drip is not ready to be distributed yet.");
+        require(WBTC.balanceOf(address(this)) > 0, "Not enough BTC to distribute");
         // Calculate the percentage of each staker's stake
         for (uint256 i = 0; i < stakerWallets.length; i++) {
             address wallet = stakerWallets[i];
             if (rockStakes[wallet] == 0 || wallet == burnWallet || wallet == address(0)) {
                 continue;
             }
-
 
             uint256 eligibleWBTCBalance = WBTC.balanceOf(address(this)) - unclaimedBTCDripTotal;
             uint256 dailyDripAmount = eligibleWBTCBalance / WBTCRewardsPercentageFactor;
@@ -439,6 +433,7 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
             unclaimedBTC[wallet] += dripReward;
             unclaimedBTCDripTotal += dripReward;
         }
+        bitcoinDripNextReleaseTime += bitcoinDripInterval;
         emit BitcoinDistributed(true, block.timestamp);
     }
 
