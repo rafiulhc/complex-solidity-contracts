@@ -206,7 +206,8 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
     // BTC Drip variables
     uint8 public WBTCRewardsPercentageFactor = 1; // owner will decide how much WBTC held by this contract and change this variable thereafter
     uint256 public unclaimedBTCDripTotal;
-    uint public bitcoinDripInterval = 86400 seconds;  // actual drip interval determined by the owner e.g 60 seconds * 60 minutes * 24 hours
+    uint256 public totalRockStake;
+    uint public bitcoinDripInterval = 60 seconds;  // actual drip interval determined by the owner e.g 60 seconds * 60 minutes * 24 hours
     uint public bitcoinDripNextReleaseTime = block.timestamp;
 
 
@@ -242,12 +243,14 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
     event RockRolled(address wallet, uint256 amountRolled, uint256 effectiveRockStaked);
     event BitcoinDistributed(bool distributed, uint time);
 
+    // To receive token from external wallet
     fallback() external payable {
-        // Do nothing
+
     }
 
+    // To receive token from external wallet
     receive() external payable {
-        // Do nothing
+
     }
 
     constructor(address _bedrock, address _wbtc){
@@ -283,6 +286,11 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
     // count how many times user Rolled rock dividends
     function getUserRollCount() public view returns (uint256) {
         return rollCount[msg.sender];
+    }
+
+    function getUserPercentageShare() public view returns (uint256) {
+       uint256 userShare = (rockStakes[msg.sender] / totalRockStake) * 100;
+       return userShare;
     }
 
     // Moderation functions
@@ -328,12 +336,14 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
         }
         uint256 remainingAmount = _deductFee(amount, true);
         rockStakes[_msgSender()] += remainingAmount;
+        totalRockStake += remainingAmount;
         BEDROCK.transferFrom(_msgSender(), address(this), amount);
 
         emit RockStaked(_msgSender(), amount, remainingAmount);
     }
 
-    function claimBitcoin(address recipient, uint256 amount) external onlyModerator {
+    // incase of necessary only owner can withdraw from contract BTC balance
+    function withdrawBitcoin(address recipient, uint256 amount) external onlyModerator {
         WBTC.transfer(recipient, amount);
     }
 
@@ -352,6 +362,7 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
         uint256 remainingAmount = _deductFee(unclaimedAmount, true);
         unclaimedRock[_msgSender()] = 0;
         rockStakes[_msgSender()] += remainingAmount;
+        totalRockStake += remainingAmount;
         rollCount[_msgSender()]++;
 
         emit RockRolled(_msgSender(), remainingAmount, remainingAmount);
@@ -369,6 +380,7 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
 
         uint256 remainingAmount = _deductFee(amount, false);
         rockStakes[_msgSender()] -= amount;
+        totalRockStake -= amount;
         BEDROCK.transfer(_msgSender(), remainingAmount);
 
         emit RockUnstaked(_msgSender(), amount, remainingAmount);
@@ -406,8 +418,7 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
                 continue;
             }
 
-            uint256 contractRockBalance = BEDROCK.balanceOf(address(this));
-            uint256 percentageShare = (100 * rockStakes[wallet]) / contractRockBalance;
+            uint256 percentageShare = (100 * rockStakes[wallet]) / totalRockStake;
             uint256 amountToReward = (amount * percentageShare) / 100;
             unclaimedRock[wallet] += amountToReward;
         }
@@ -427,8 +438,7 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
             uint256 eligibleWBTCBalance = WBTC.balanceOf(address(this)) - unclaimedBTCDripTotal;
             uint256 dailyDripAmount = eligibleWBTCBalance / WBTCRewardsPercentageFactor;
 
-            uint256 contractRockBalance = BEDROCK.balanceOf(address(this));
-            uint256 percentageShare = (100 * rockStakes[wallet]) / contractRockBalance;
+            uint256 percentageShare = (100 * rockStakes[wallet]) / totalRockStake;
             uint256 dripReward = (dailyDripAmount * percentageShare) / 100;
             unclaimedBTC[wallet] += dripReward;
             unclaimedBTCDripTotal += dripReward;
