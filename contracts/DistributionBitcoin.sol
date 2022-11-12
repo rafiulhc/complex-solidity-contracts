@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: None
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.17;
 
 // import "@openzeppelin/contracts/access/Ownable.sol";
 // import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -205,6 +205,7 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
 
     // BTC Drip variables
     uint8 public WBTCRewardsPercentageFactor = 1; // owner will decide how much WBTC held by this contract and change this variable thereafter
+    uint256 public residualBTCbalance;
     uint256 public unclaimedBTCDripTotal;
     uint256 public totalRockStake;
     uint public bitcoinDripInterval = 60 seconds;  // actual drip interval determined by the owner e.g 60 seconds * 60 minutes * 24 hours
@@ -288,8 +289,8 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
         return rollCount[msg.sender];
     }
 
-    function getUserPercentageShare() public view returns (uint256) {
-       uint256 userShare = (rockStakes[msg.sender] / totalRockStake) * 100;
+    function getUserPercentageShare(address _user) public view returns (uint256) {
+       uint256 userShare = (rockStakes[_user] / totalRockStake) * 100;
        return userShare;
     }
 
@@ -426,8 +427,15 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
 
     // Distribution of Bitcoin Drip
     function distributeBitcoin() external {
+
         require(block.timestamp > bitcoinDripNextReleaseTime, "Bitcoin drip is not ready to be distributed yet.");
-        require(WBTC.balanceOf(address(this)) > 0, "Not enough BTC to distribute");
+
+        uint256 eligibleWBTCBalance = WBTC.balanceOf(address(this)) - unclaimedBTCDripTotal - residualBTCbalance;
+
+        require(eligibleWBTCBalance > 0, "Not enough BTC to distribute");
+
+        uint256 dailyDripAmount = eligibleWBTCBalance / WBTCRewardsPercentageFactor;
+
         // Calculate the percentage of each staker's stake
         for (uint256 i = 0; i < stakerWallets.length; i++) {
             address wallet = stakerWallets[i];
@@ -435,17 +443,16 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
                 continue;
             }
 
-            uint256 eligibleWBTCBalance = WBTC.balanceOf(address(this)) - unclaimedBTCDripTotal;
-            uint256 dailyDripAmount = eligibleWBTCBalance / WBTCRewardsPercentageFactor;
-
             uint256 percentageShare = (100 * rockStakes[wallet]) / totalRockStake;
             uint256 dripReward = (dailyDripAmount * percentageShare) / 100;
             unclaimedBTC[wallet] += dripReward;
             unclaimedBTCDripTotal += dripReward;
         }
         bitcoinDripNextReleaseTime += bitcoinDripInterval;
+        residualBTCbalance = WBTC.balanceOf(address(this)) - unclaimedBTCDripTotal;
         emit BitcoinDistributed(true, block.timestamp);
     }
+
 
     function claimBTCDrip() external nonReentrant {
         uint256 unclaimedAmount = unclaimedBTC[_msgSender()];
