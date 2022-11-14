@@ -430,11 +430,12 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
 
         require(block.timestamp > bitcoinDripNextReleaseTime, "Bitcoin drip is not ready to be distributed yet.");
 
-        uint256 eligibleWBTCBalance = WBTC.balanceOf(address(this)) - unclaimedBTCDripTotal - residualBTCbalance;
+        if (WBTCRewardsPercentageFactor == 1) {
+            uint256 eligibleWBTCBalance = WBTC.balanceOf(address(this)) - unclaimedBTCDripTotal;
 
-        require(eligibleWBTCBalance > 0, "Not enough BTC to distribute");
+            require(eligibleWBTCBalance > 0, "Not enough BTC to distribute");
 
-        uint256 dailyDripAmount = eligibleWBTCBalance / WBTCRewardsPercentageFactor;
+            uint256 dailyDripAmount = eligibleWBTCBalance / WBTCRewardsPercentageFactor;
 
         // Calculate the percentage of each staker's stake
         for (uint256 i = 0; i < stakerWallets.length; i++) {
@@ -447,9 +448,32 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
             uint256 dripReward = (dailyDripAmount * percentageShare) / 100;
             unclaimedBTC[wallet] += dripReward;
             unclaimedBTCDripTotal += dripReward;
-        }
-        bitcoinDripNextReleaseTime += bitcoinDripInterval;
+            }
         residualBTCbalance = WBTC.balanceOf(address(this)) - unclaimedBTCDripTotal;
+        unclaimedBTCDripTotal += residualBTCbalance;
+        }
+        else {
+            uint256 eligibleWBTCBalance = WBTC.balanceOf(address(this)) - unclaimedBTCDripTotal;
+
+            require(eligibleWBTCBalance > 0, "Not enough BTC to distribute");
+
+             uint256 dailyDripAmount = eligibleWBTCBalance / WBTCRewardsPercentageFactor;
+
+        // Calculate the percentage of each staker's stake
+        for (uint256 i = 0; i < stakerWallets.length; i++) {
+            address wallet = stakerWallets[i];
+            if (rockStakes[wallet] == 0 || wallet == burnWallet || wallet == address(0)) {
+                continue;
+            }
+
+            uint256 percentageShare = (100 * rockStakes[wallet]) / totalRockStake;
+            uint256 dripReward = (dailyDripAmount * percentageShare) / 100;
+            unclaimedBTC[wallet] += dripReward;
+            unclaimedBTCDripTotal += dripReward;
+            }
+        }
+
+        bitcoinDripNextReleaseTime += bitcoinDripInterval;
         emit BitcoinDistributed(true, block.timestamp);
     }
 
