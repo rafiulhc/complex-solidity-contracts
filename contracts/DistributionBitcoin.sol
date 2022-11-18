@@ -473,7 +473,7 @@ contract RockBitcoin is Ownable, ReentrancyGuard {
             }
         }
 
-        bitcoinDripNextReleaseTime += bitcoinDripInterval;
+        bitcoinDripNextReleaseTime = block.timestamp + bitcoinDripInterval;
         emit BitcoinDistributed(true, block.timestamp);
     }
 
